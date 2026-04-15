@@ -2572,7 +2572,7 @@ public class MagicController implements MageController, ChunkLoadListener {
 
     private void sendLoadSummary(CommandSender sender, List<LogMessage> warnings, List<LogMessage> errors) {
         if (warnings.isEmpty() && errors.isEmpty()) {
-            sender.sendMessage(ChatColor.GREEN + "Finished loading, No issues found!");
+            sender.sendMessage(ChatColor.GREEN + "Finished loading, no issues found!");
             return;
         }
         if (!errors.isEmpty()) {
