@@ -71,7 +71,6 @@ import org.bukkit.event.block.BlockPhysicsEvent;
 import org.bukkit.event.entity.CreatureSpawnEvent;
 import org.bukkit.event.player.AsyncPlayerPreLoginEvent;
 import org.bukkit.inventory.ItemStack;
-import org.bukkit.inventory.meta.BookMeta;
 import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.metadata.MetadataValue;
 import org.bukkit.plugin.Plugin;
@@ -124,7 +123,6 @@ import com.elmakers.mine.bukkit.api.requirements.Requirement;
 import com.elmakers.mine.bukkit.api.requirements.RequirementsProcessor;
 import com.elmakers.mine.bukkit.api.requirements.RequirementsProvider;
 import com.elmakers.mine.bukkit.api.rp.ResourcePackStatus;
-import com.elmakers.mine.bukkit.api.spell.CastingCost;
 import com.elmakers.mine.bukkit.api.spell.MageSpell;
 import com.elmakers.mine.bukkit.api.spell.Spell;
 import com.elmakers.mine.bukkit.api.spell.SpellKey;
@@ -367,6 +365,7 @@ public class MagicController implements MageController, ChunkLoadListener {
     private final int undoTimeWindow = 6000;
     private final Map<String, DamageType> damageTypes = new HashMap<>();
     private final SkinAndSkullManager skinAndSkullManager;
+    private final SpellBookManager spellBookManager;
     private final int toggleMessageRange = 1024;
     private final Material defaultMaterial = Material.DIRT;
     private final Set<EntityType> undoEntityTypes = new HashSet<>();
@@ -633,6 +632,7 @@ public class MagicController implements MageController, ChunkLoadListener {
         // this.materialSetManager.setLogger(logger);
         resourcePacks = new ResourcePackManager(this);
         skinAndSkullManager = new SkinAndSkullManager();
+        spellBookManager = new SpellBookManager(this, messages, spells, categories);
 
         configFolder = plugin.getDataFolder();
         if (configFolder != null) {
@@ -5280,235 +5280,27 @@ public class MagicController implements MageController, ChunkLoadListener {
     }
 
     public ItemStack getSpellBook() {
-        return getSpellBook((SpellCategory)null);
+        return spellBookManager.getSpellBook();
     }
 
     public ItemStack getSpellBook(com.elmakers.mine.bukkit.api.spell.SpellCategory category) {
-        Map<String, List<SpellTemplate>> categories = new HashMap<>();
-        Collection<SpellTemplate> spellVariants = spells.values();
-        String categoryKey = category == null ? null : category.getKey();
-        for (SpellTemplate spell : spellVariants) {
-            if (spell.isHidden() || spell.getSpellKey().isVariant()) continue;
-            com.elmakers.mine.bukkit.api.spell.SpellCategory spellCategory = spell.getCategory();
-            if (spellCategory == null) continue;
-
-            String spellCategoryKey = spellCategory.getKey();
-            if (categoryKey == null || spellCategoryKey.equalsIgnoreCase(categoryKey)) {
-                List<SpellTemplate> categorySpells = categories.get(spellCategoryKey);
-                if (categorySpells == null) {
-                    categorySpells = new ArrayList<>();
-                    categories.put(spellCategoryKey, categorySpells);
-                }
-                categorySpells.add(spell);
-            }
-        }
-
-        List<String> categoryKeys = new ArrayList<>(categories.keySet());
-        Collections.sort(categoryKeys);
-
-        ItemStack bookItem = new ItemStack(Material.WRITTEN_BOOK);
-        BookMeta book = (BookMeta) bookItem.getItemMeta();
-        book.setAuthor(messages.get("books.default.author"));
-        String title = null;
-        if (category != null) {
-            title = messages.get("books.default.title").replace("$category", category.getName());
-        } else {
-            title = messages.get("books.all.title");
-        }
-        book.setTitle(title);
-        List<String> pages = new ArrayList<>();
-        for (String key : categoryKeys) {
-            category = getCategory(key);
-            title = messages.get("books.default.title").replace("$category", category.getName());
-            String description = "" + ChatColor.BOLD + ChatColor.BLUE + title + "\n\n";
-            description += "" + ChatColor.RESET + ChatColor.DARK_BLUE + category.getDescription();
-            pages.add(description);
-
-            List<SpellTemplate> categorySpells = categories.get(key);
-            Collections.sort(categorySpells);
-
-            for (SpellTemplate spell : categorySpells) {
-                List<String> lines = getSpellBookDescription(spell);
-                pages.add(StringUtils.join(lines, "\n"));
-            }
-        }
-
-        book.setPages(pages);
-        bookItem.setItemMeta(book);
-        return bookItem;
+        return spellBookManager.getSpellBook(category);
     }
 
     public ItemStack getSpellBook(com.elmakers.mine.bukkit.api.spell.SpellTemplate spell) {
-        ItemStack bookItem = new ItemStack(Material.WRITTEN_BOOK);
-        BookMeta book = (BookMeta) bookItem.getItemMeta();
-        book.setAuthor(messages.get("books.default.author"));
-        book.setTitle(messages.get("books.spell.title").replace("$spell", spell.getName()));
-        List<String> pages = new ArrayList<>();
-        List<String> lines = getSpellBookDescription(spell);
-        pages.add(StringUtils.join(lines, "\n"));
-        book.setPages(pages);
-        bookItem.setItemMeta(book);
-        return bookItem;
+        return spellBookManager.getSpellBook(spell);
     }
 
     protected List<String> getSpellBookDescription(SpellTemplate spell) {
-        Set<String> paths = WandUpgradePath.getPathKeys();
-        List<String> lines = new ArrayList<>();
-        lines.add("" + ChatColor.GOLD + ChatColor.BOLD + spell.getName());
-        lines.add("" + ChatColor.RESET);
-
-        String spellDescription = spell.getDescription();
-        if (spellDescription != null && spellDescription.length() > 0) {
-            lines.add("" + ChatColor.BLACK + spellDescription);
-            lines.add("");
-        }
-
-        int charges = spell.getMaxCharges();
-        String description = messages.get("charges.description");
-        if (charges > 1 && !description.isEmpty()) {
-            String chargesDescription = description.replace("$count", Integer.toString(charges));
-            lines.add("" + ChatColor.DARK_PURPLE + chargesDescription);
-        }
-
-        String spellCooldownDescription = spell.getCooldownDescription();
-        description = messages.get("cooldown.description");
-        if (spellCooldownDescription != null && spellCooldownDescription.length() > 0 && !description.isEmpty()) {
-            spellCooldownDescription = description.replace("$time", spellCooldownDescription);
-            lines.add("" + ChatColor.DARK_PURPLE + spellCooldownDescription);
-        }
-
-        String spellMageCooldownDescription = spell.getMageCooldownDescription();
-        description = messages.get("cooldown.mage_description");
-        if (spellMageCooldownDescription != null && spellMageCooldownDescription.length() > 0 && !description.isEmpty()) {
-            spellMageCooldownDescription = description.replace("$time", spellMageCooldownDescription);
-            lines.add("" + ChatColor.RED + spellMageCooldownDescription);
-        }
-
-        Collection<CastingCost> costs = spell.getCosts();
-        description = messages.get("wand.costs_description");
-        if (costs != null && !description.isEmpty()) {
-            for (CastingCost cost : costs) {
-                if (!cost.isEmpty()) {
-                    lines.add(ChatColor.DARK_PURPLE + description.replace("$description", cost.getFullDescription(messages)));
-                }
-            }
-        }
-        Collection<CastingCost> activeCosts = spell.getActiveCosts();
-        description = messages.get("wand.active_costs_description");
-        if (activeCosts != null) {
-            for (CastingCost cost : activeCosts) {
-                if (!cost.isEmpty()) {
-                    lines.add(ChatColor.DARK_PURPLE + description.replace("$description", cost.getFullDescription(messages)));
-                }
-            }
-        }
-
-        description = messages.get("spell.available_path");
-        if (!description.isEmpty()) {
-            for (String pathKey : paths) {
-                WandUpgradePath checkPath = WandUpgradePath.getPath(pathKey);
-                if (!checkPath.isHidden() && (checkPath.hasSpell(spell.getKey()) || checkPath.hasExtraSpell(spell.getKey()))) {
-                    lines.add(ChatColor.DARK_BLUE + description.replace("$path", checkPath.getName()));
-                    break;
-                }
-            }
-        }
-
-        description = messages.get("spell.required_path");
-        if (!description.isEmpty()) {
-            for (String pathKey : paths) {
-                WandUpgradePath checkPath = WandUpgradePath.getPath(pathKey);
-                if (checkPath.requiresSpell(spell.getKey())) {
-                    lines.add(ChatColor.DARK_RED + description.replace("$path", checkPath.getName()));
-                    break;
-                }
-            }
-        }
-
-        String duration = spell.getDurationDescription(messages);
-        if (duration != null) {
-            lines.add(ChatColor.DARK_GREEN + duration);
-        } else if (spell.showUndoable()) {
-            if (spell.isUndoable()) {
-                String undoable = messages.get("spell.undoable", "");
-                if (!undoable.isEmpty()) {
-                    lines.add(undoable);
-                }
-            } else {
-                String notUndoable = messages.get("spell.not_undoable", "");
-                if (!notUndoable.isEmpty()) {
-                    lines.add(notUndoable);
-                }
-            }
-        }
-
-        description = messages.get("spell.brush");
-        if (spell.usesBrush() && !description.isEmpty()) {
-            lines.add(ChatColor.DARK_GRAY + description);
-        }
-
-        SpellKey baseKey = spell.getSpellKey();
-        SpellKey upgradeKey = new SpellKey(baseKey.getBaseKey(), baseKey.getLevel() + 1);
-        SpellTemplate upgradeSpell = getSpellTemplate(upgradeKey.getKey());
-        int spellLevels = 0;
-        while (upgradeSpell != null) {
-            spellLevels++;
-            upgradeKey = new SpellKey(upgradeKey.getBaseKey(), upgradeKey.getLevel() + 1);
-            upgradeSpell = getSpellTemplate(upgradeKey.getKey());
-        }
-        description = messages.get("spell.levels_available");
-        if (spellLevels > 0 && !description.isEmpty()) {
-            spellLevels++;
-            lines.add(ChatColor.DARK_AQUA + description.replace("$levels", Integer.toString(spellLevels)));
-        }
-
-        String usage = spell.getUsage();
-        if (usage != null && usage.length() > 0) {
-            lines.add("" + ChatColor.GRAY + ChatColor.ITALIC + usage + ChatColor.RESET);
-            lines.add("");
-        }
-
-        String spellExtendedDescription = spell.getExtendedDescription();
-        if (spellExtendedDescription != null && spellExtendedDescription.length() > 0) {
-            lines.add("" + ChatColor.BLACK + spellExtendedDescription);
-            lines.add("");
-        }
-
-        return lines;
+        return spellBookManager.getSpellBookDescription(spell);
     }
 
     public ItemStack getSpellCategoriesBook() {
-        List<String> categoryKeys = new ArrayList<>(categories.keySet());
-        Collections.sort(categoryKeys);
-
-        ItemStack bookItem = new ItemStack(Material.WRITTEN_BOOK);
-        BookMeta book = (BookMeta) bookItem.getItemMeta();
-        book.setAuthor(messages.get("books.default.author"));
-        String title = messages.get("books.categories.title");
-        book.setTitle(title);
-        List<String> pages = new ArrayList<>();
-        for (String key : categoryKeys) {
-            com.elmakers.mine.bukkit.api.spell.SpellCategory category = getCategory(key);
-            String description = messages.get("books.categories.category").replace("$category", category.getName());
-            description += "\n\n" + ChatColor.RESET + category.getDescription();
-            pages.add(description);
-        }
-
-        book.setPages(pages);
-        bookItem.setItemMeta(book);
-        return bookItem;
+        return spellBookManager.getSpellCategoriesBook();
     }
 
     public ItemStack getLearnSpellBook(SpellTemplate spell) {
-        ConfigurationSection wandConfiguration = ConfigurationUtils.newConfigurationSection();
-        wandConfiguration.set("template", "learnspell");
-        wandConfiguration.set("icon", "book:" + spell.getKey());
-        wandConfiguration.set("name", messages.get("books.learnspell.name").replace("$spell", spell.getName()));
-        wandConfiguration.set("description", messages.get("books.learnspell.description").replace("$spell", spell.getName()));
-        wandConfiguration.set("overrides", "spell " + spell.getKey());
-        Wand wand = new Wand(this, wandConfiguration);
-        ItemStack item = wand.getItem();
-        return item;
+        return spellBookManager.getLearnSpellBook(spell);
     }
 
     @Override
