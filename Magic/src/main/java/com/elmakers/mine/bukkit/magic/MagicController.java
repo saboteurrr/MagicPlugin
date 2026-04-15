@@ -2539,42 +2539,9 @@ public class MagicController implements MageController, ChunkLoadListener {
                 List<LogMessage> errors = logger.getErrors();
                 List<LogMessage> warnings = logger.getWarnings();
 
-                if (!warnings.isEmpty()) {
-                    if (warnings.size() == 1) {
-                        sender.sendMessage(ChatColor.YELLOW + "WARNING: " + ChatColor.WHITE + warnings.get(0).getMessage());
-                    } else {
-                        sender.sendMessage(ChatColor.YELLOW + "WARNINGS: " + ChatColor.WHITE + warnings.size());
-                        for (int i = 0; i < warnings.size() && i < MAX_WARNINGS; i++) {
-                            sender.sendMessage(ChatColor.WHITE + " " + warnings.get(i).getMessage());
-                        }
-                        if (warnings.size() > MAX_WARNINGS) {
-                            sender.sendMessage(ChatColor.GRAY + "  ...");
-                        }
-                    }
-                }
-
-                if (!errors.isEmpty()) {
-                    if (errors.size() == 1) {
-                        sender.sendMessage(ChatColor.RED + "ERROR: " + ChatColor.WHITE + errors.get(0).getMessage());
-                    } else {
-                        sender.sendMessage(ChatColor.RED + "ERRORS: " + ChatColor.WHITE + errors.size());
-                        for (int i = 0; i < errors.size() && i < MAX_ERRORS; i++) {
-                            sender.sendMessage(ChatColor.WHITE + " " + errors.get(i).getMessage());
-                        }
-                        if (errors.size() > MAX_ERRORS) {
-                            sender.sendMessage(ChatColor.GRAY + "  ...");
-                        }
-                    }
-                }
-                if (warnings.isEmpty() && errors.isEmpty()) {
-                    sender.sendMessage(ChatColor.GREEN + "Finished loading, No issues found!");
-                } else {
-                    if (!errors.isEmpty()) {
-                        sender.sendMessage(ChatColor.RED + "Finished loading " + ChatColor.DARK_RED + "with errors");
-                    } else {
-                        sender.sendMessage(ChatColor.GOLD + "Finished loading " + ChatColor.YELLOW + "with warnings");
-                    }
-                }
+                sendLoadingMessages(sender, warnings, "WARNING", "WARNINGS", ChatColor.YELLOW, MAX_WARNINGS);
+                sendLoadingMessages(sender, errors, "ERROR", "ERRORS", ChatColor.RED, MAX_ERRORS);
+                sendLoadSummary(sender, warnings, errors);
             }
 
             logger.enableCapture(false);
@@ -2583,6 +2550,51 @@ public class MagicController implements MageController, ChunkLoadListener {
                 logWatchdogTimer = null;
             }
         }
+    }
+
+    private void sendLoadingMessages(CommandSender sender, List<LogMessage> messages, String singularLabel, String pluralLabel, ChatColor color, int maxMessages) {
+        if (messages.isEmpty()) {
+            return;
+        }
+        if (messages.size() == 1) {
+            sender.sendMessage(color + singularLabel + ": " + ChatColor.WHITE + messages.get(0).getMessage());
+            return;
+        }
+
+        sender.sendMessage(color + pluralLabel + ": " + ChatColor.WHITE + messages.size());
+        for (int i = 0; i < messages.size() && i < maxMessages; i++) {
+            sender.sendMessage(ChatColor.WHITE + " " + messages.get(i).getMessage());
+        }
+        if (messages.size() > maxMessages) {
+            sender.sendMessage(ChatColor.GRAY + "  ...");
+        }
+    }
+
+    private void sendLoadSummary(CommandSender sender, List<LogMessage> warnings, List<LogMessage> errors) {
+        if (warnings.isEmpty() && errors.isEmpty()) {
+            sender.sendMessage(ChatColor.GREEN + "Finished loading, No issues found!");
+            return;
+        }
+        if (!errors.isEmpty()) {
+            sender.sendMessage(ChatColor.RED + "Finished loading " + ChatColor.DARK_RED + "with errors");
+            return;
+        }
+        sender.sendMessage(ChatColor.GOLD + "Finished loading " + ChatColor.YELLOW + "with warnings");
+    }
+
+    private int cancelTask(int taskId) {
+        if (taskId > 0) {
+            Bukkit.getScheduler().cancelTask(taskId);
+        }
+        return 0;
+    }
+
+    @Nullable
+    private BukkitTask cancelTask(@Nullable BukkitTask task) {
+        if (task != null) {
+            task.cancel();
+        }
+        return null;
     }
 
     @Override
@@ -3754,28 +3766,21 @@ public class MagicController implements MageController, ChunkLoadListener {
     @Override
     public Boolean getRegionCastPermission(Player player, SpellTemplate spell, Location location) {
         if (hasBypassPermission(player)) return true;
-        Boolean result = null;
-        for (CastPermissionManager manager : castManagers) {
-            Boolean managerResult = manager.getRegionCastPermission(player, spell, location);
-            if (managerResult != null) {
-                if (!managerResult) {
-                    return false;
-                }
-                if (result == null) {
-                    result = managerResult;
-                }
-            }
-        }
-        return result;
+        return getCastPermission(manager -> manager.getRegionCastPermission(player, spell, location));
     }
 
     @Nullable
     @Override
     public Boolean getPersonalCastPermission(Player player, SpellTemplate spell, Location location) {
         if (hasBypassPermission(player)) return true;
+        return getCastPermission(manager -> manager.getPersonalCastPermission(player, spell, location));
+    }
+
+    @Nullable
+    private Boolean getCastPermission(Function<CastPermissionManager, Boolean> permissionGetter) {
         Boolean result = null;
         for (CastPermissionManager manager : castManagers) {
-            Boolean managerResult = manager.getPersonalCastPermission(player, spell, location);
+            Boolean managerResult = permissionGetter.apply(manager);
             if (managerResult != null) {
                 if (!managerResult) {
                     return false;
@@ -8041,18 +8046,9 @@ public class MagicController implements MageController, ChunkLoadListener {
         logger.setColorize(properties.getBoolean("colored_logs", true));
 
         // Cancel any pending save tasks
-        if (autoSaveTaskId > 0) {
-            Bukkit.getScheduler().cancelTask(autoSaveTaskId);
-            autoSaveTaskId = 0;
-        }
-        if (configCheckTask != null) {
-            configCheckTask.cancel();
-            configCheckTask = null;
-        }
-        if (logNotifyTask != null) {
-            logNotifyTask.cancel();
-            logNotifyTask = null;
-        }
+        autoSaveTaskId = cancelTask(autoSaveTaskId);
+        configCheckTask = cancelTask(configCheckTask);
+        logNotifyTask = cancelTask(logNotifyTask);
 
         debugEffectLib = properties.getBoolean("debug_effects", false);
         com.elmakers.mine.bukkit.effect.EffectPlayer.debugEffects(debugEffectLib);
