@@ -91,11 +91,11 @@ final class SkinAndSkullManager {
                     skullItems.put(entityType, item);
                 }
                 MaterialAndData floor = parseSkullCandidate(types, "ground");
-                if (item != null) {
+                if (floor != null) {
                     skullGroundBlocks.put(entityType, floor);
                 }
                 MaterialAndData wall = parseSkullCandidate(types, "wall");
-                if (item != null) {
+                if (wall != null) {
                     skullWallBlocks.put(entityType, wall);
                 }
             } catch (Exception ignore) {
