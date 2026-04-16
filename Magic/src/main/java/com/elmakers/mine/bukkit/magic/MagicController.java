@@ -7444,9 +7444,13 @@ public class MagicController implements MageController, ChunkLoadListener {
 
     public void finalizeIntegration() {
         logger.setContext("integration");
-
         final PluginManager pluginManager = plugin.getServer().getPluginManager();
+        finalizeIndicatorAndMobArenaIntegration(pluginManager);
+        finalizeDisguiseAndModelIntegrations(pluginManager);
+        finalizeRPGPluginIntegrations(pluginManager);
+    }
 
+    private void finalizeIndicatorAndMobArenaIntegration(PluginManager pluginManager) {
         // Check for damage indicator holograms
         Plugin hologramPlugin = pluginManager.getPlugin("DamageIndicatorsFree");
         if (hologramPlugin != null) {
@@ -7473,7 +7477,9 @@ public class MagicController implements MageController, ChunkLoadListener {
         } else {
             getLogger().info("MobArena integration disabled");
         }
+    }
 
+    private void finalizeDisguiseAndModelIntegrations(PluginManager pluginManager) {
         // Check for LibsDisguise
         Plugin libsDisguisePlugin = pluginManager.getPlugin("LibsDisguises");
         if (libsDisguisePlugin == null) {
@@ -7509,7 +7515,9 @@ public class MagicController implements MageController, ChunkLoadListener {
             modelEngineManager = null;
             getLogger().info("ModelEngine integration disabled");
         }
+    }
 
+    private void finalizeRPGPluginIntegrations(PluginManager pluginManager) {
         // Try to link to Heroes:
         try {
             Plugin heroesPlugin = pluginManager.getPlugin("Heroes");
@@ -7616,6 +7624,7 @@ public class MagicController implements MageController, ChunkLoadListener {
         }
     }
 
+
     private void finalizeIntegrationPreLoad() {
         logger.setContext("integration");
         final PluginManager pluginManager = plugin.getServer().getPluginManager();
@@ -7637,10 +7646,19 @@ public class MagicController implements MageController, ChunkLoadListener {
 
     public void finalizeIntegrationPostLoad(ConfigurationSection mainConfiguration) {
         logger.setContext("integration");
-
         final PluginManager pluginManager = plugin.getServer().getPluginManager();
         blockController.finalizeIntegration();
+        finalizeCombatAndArenasIntegrations(pluginManager);
+        finalizeCommunicationAndMappingIntegrations(pluginManager);
+        finalizeProtectionAndRegionIntegrations(pluginManager);
+        finalizeSocialAndVisualIntegrations(pluginManager);
+        finalizeClaimsIntegrations(pluginManager);
+        // Load integrations for plugins that can't be attached until after load time
+        loadPostIntegrations(mainConfiguration);
+        finalizeScheduledTasks();
+    }
 
+    private void finalizeCombatAndArenasIntegrations(PluginManager pluginManager) {
         // Check for BattleArenas
         Plugin battleArenaPlugin = pluginManager.getPlugin("BattleArena");
         if (battleArenaPlugin != null) {
@@ -7673,7 +7691,9 @@ public class MagicController implements MageController, ChunkLoadListener {
             pluginManager.registerEvents(new MinigamesListener(this), plugin);
             getLogger().info("Minigames found, wands will deactivate before joining a minigame");
         }
+    }
 
+    private void finalizeCommunicationAndMappingIntegrations(PluginManager pluginManager) {
         // Check for LogBlock
         Plugin logBlockPlugin = pluginManager.getPlugin("LogBlock");
         if (logBlockPlugin == null || !logBlockPlugin.isEnabled()) {
@@ -7742,7 +7762,9 @@ public class MagicController implements MageController, ChunkLoadListener {
         } catch (Throwable ignored) {
 
         }
+    }
 
+    private void finalizeProtectionAndRegionIntegrations(PluginManager pluginManager) {
         // Link to factions
         factionsManager.initialize(plugin);
 
@@ -7832,7 +7854,9 @@ public class MagicController implements MageController, ChunkLoadListener {
         if (elementals != null) {
             getLogger().info("Elementals found, integrating.");
         }
+    }
 
+    private void finalizeSocialAndVisualIntegrations(PluginManager pluginManager) {
         // Check for Shopkeepers, this is an optimization to avoid scanning for metadata if the plugin is not
         // present
         hasShopkeepers = pluginManager.isPluginEnabled("Shopkeepers");
@@ -7929,7 +7953,9 @@ public class MagicController implements MageController, ChunkLoadListener {
         } else {
             getLogger().info("Citadel integration disabled.");
         }
+    }
 
+    private void finalizeClaimsIntegrations(PluginManager pluginManager) {
         // Residence
         if (residenceConfiguration.getBoolean("enabled")) {
             if (pluginManager.isPluginEnabled("Residence")) {
@@ -8005,10 +8031,9 @@ public class MagicController implements MageController, ChunkLoadListener {
         } else {
             getLogger().info("UltimateClans Lands integration disabled.");
         }
+    }
 
-        // Load integrations for plugins that can't be attached until after load time
-        loadPostIntegrations(mainConfiguration);
-
+    private void finalizeScheduledTasks() {
         // Set up the Mage update timer
         final MageUpdateTask mageTask = new MageUpdateTask(this);
         Bukkit.getScheduler().scheduleSyncRepeatingTask(plugin, mageTask, 0, mageUpdateFrequency);
@@ -8029,9 +8054,17 @@ public class MagicController implements MageController, ChunkLoadListener {
     protected void loadProperties(CommandSender sender, ConfigurationSection properties) {
         if (properties == null) return;
 
-        // Delegate to resource pack handler
         resourcePacks.load(properties, sender, !loaded);
+        loadLoggingAndDebugProperties(properties);
+        loadSchedulingAndWorkProperties(properties);
+        loadPowerAndHitboxLimits(properties);
+        loadCastBehaviorProperties(properties);
+        loadTeamAndMessageProperties(properties);
+        loadWandAndMageGlobalSettings(properties);
+        loadSubControllersAndTimers(sender, properties);
+    }
 
+    private void loadLoggingAndDebugProperties(ConfigurationSection properties) {
         logVerbosity = properties.getInt("log_verbosity", 0);
         debugConfigurationFiles = properties.getBoolean("debug_configuration_files", false);
         if (debugConfigurationFiles) {
@@ -8057,7 +8090,9 @@ public class MagicController implements MageController, ChunkLoadListener {
         CompatibilityLib.getCompatibilityUtils().load(properties);
         com.elmakers.mine.bukkit.effect.EffectPlayer.setParticleRange(properties.getInt("particle_range", com.elmakers.mine.bukkit.effect.EffectPlayer.PARTICLE_RANGE));
         com.elmakers.mine.bukkit.effect.EffectPlayer.setForceShow(properties.getBoolean("particle_force_show", false));
+    }
 
+    private void loadSchedulingAndWorkProperties(ConfigurationSection properties) {
         loadWandSlotTemplates(properties.getConfigurationSection("wand_slots"));
         loadWandSets(properties.getConfigurationSection("wand_sets"));
         urlIconsEnabled = properties.getBoolean("url_icons_enabled", urlIconsEnabled);
@@ -8108,7 +8143,9 @@ public class MagicController implements MageController, ChunkLoadListener {
         loadSkulls(properties.getConfigurationSection("skulls"));
         loadOtherMaterials(properties.getConfigurationSection("migrate_materials"));
         WandCommandExecutor.CONSOLE_BYPASS_MODIFIABLE = properties.getBoolean("console_bypass_modifiable", properties.getBoolean("console_bypass_locked_wands", true));
+    }
 
+    private void loadPowerAndHitboxLimits(ConfigurationSection properties) {
         maxPower = (float) properties.getDouble("max_power", maxPower);
         ConfigurationSection damageTypes = properties.getConfigurationSection("damage_types");
         if (damageTypes != null) {
@@ -8138,7 +8175,9 @@ public class MagicController implements MageController, ChunkLoadListener {
         if (properties.contains("max_height")) {
             CompatibilityLib.getCompatibilityUtils().configureMaxHeights(properties.getConfigurationSection("max_height"));
         }
+    }
 
+    private void loadCastBehaviorProperties(ConfigurationSection properties) {
         // These were changed from set values to multipliers, we're going to translate for backwards compatibility.
         // The default configs used to have these set to either 0 or 100, where 100 indicated that we should be
         // turning off the costs/cooldowns.
@@ -8218,6 +8257,9 @@ public class MagicController implements MageController, ChunkLoadListener {
         if (mobArenaManager != null) {
             mobArenaManager.configure(mobArenaConfiguration);
         }
+    }
+
+    private void loadTeamAndMessageProperties(ConfigurationSection properties) {
         String swingTypeString = properties.getString("left_click_type");
         try {
             swingType = SwingType.valueOf(swingTypeString.toUpperCase());
@@ -8308,7 +8350,9 @@ public class MagicController implements MageController, ChunkLoadListener {
         for (String exampleKey : exampleKeys) {
             builtinExternalExamples.put(exampleKey, builtinExampleConfigs.getString(exampleKey));
         }
+    }
 
+    private void loadWandAndMageGlobalSettings(ConfigurationSection properties) {
         Wand.regenWhileInactive = properties.getBoolean("regenerate_while_inactive", Wand.regenWhileInactive);
         if (properties.contains("mana_display")) {
             String manaDisplay = properties.getString("mana_display");
@@ -8429,7 +8473,9 @@ public class MagicController implements MageController, ChunkLoadListener {
         Wand.inventoryCycleSound = ConfigurationUtils.toSoundEffect(properties.getString("wand_inventory_cycle_sound"));
         Wand.noActionSound = ConfigurationUtils.toSoundEffect(properties.getString("wand_no_action_sound"));
         Wand.itemPickupSound = ConfigurationUtils.toSoundEffect(properties.getString("wand_pickup_item_sound"));
+    }
 
+    private void loadSubControllersAndTimers(CommandSender sender, ConfigurationSection properties) {
         // Configure sub-controllers
         explosionController.loadProperties(properties);
         inventoryController.loadProperties(properties);
