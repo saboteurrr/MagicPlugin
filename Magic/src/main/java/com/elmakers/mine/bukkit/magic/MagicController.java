@@ -2539,42 +2539,9 @@ public class MagicController implements MageController, ChunkLoadListener {
                 List<LogMessage> errors = logger.getErrors();
                 List<LogMessage> warnings = logger.getWarnings();
 
-                if (!warnings.isEmpty()) {
-                    if (warnings.size() == 1) {
-                        sender.sendMessage(ChatColor.YELLOW + "WARNING: " + ChatColor.WHITE + warnings.get(0).getMessage());
-                    } else {
-                        sender.sendMessage(ChatColor.YELLOW + "WARNINGS: " + ChatColor.WHITE + warnings.size());
-                        for (int i = 0; i < warnings.size() && i < MAX_WARNINGS; i++) {
-                            sender.sendMessage(ChatColor.WHITE + " " + warnings.get(i).getMessage());
-                        }
-                        if (warnings.size() > MAX_WARNINGS) {
-                            sender.sendMessage(ChatColor.GRAY + "  ...");
-                        }
-                    }
-                }
-
-                if (!errors.isEmpty()) {
-                    if (errors.size() == 1) {
-                        sender.sendMessage(ChatColor.RED + "ERROR: " + ChatColor.WHITE + errors.get(0).getMessage());
-                    } else {
-                        sender.sendMessage(ChatColor.RED + "ERRORS: " + ChatColor.WHITE + errors.size());
-                        for (int i = 0; i < errors.size() && i < MAX_ERRORS; i++) {
-                            sender.sendMessage(ChatColor.WHITE + " " + errors.get(i).getMessage());
-                        }
-                        if (errors.size() > MAX_ERRORS) {
-                            sender.sendMessage(ChatColor.GRAY + "  ...");
-                        }
-                    }
-                }
-                if (warnings.isEmpty() && errors.isEmpty()) {
-                    sender.sendMessage(ChatColor.GREEN + "Finished loading, No issues found!");
-                } else {
-                    if (!errors.isEmpty()) {
-                        sender.sendMessage(ChatColor.RED + "Finished loading " + ChatColor.DARK_RED + "with errors");
-                    } else {
-                        sender.sendMessage(ChatColor.GOLD + "Finished loading " + ChatColor.YELLOW + "with warnings");
-                    }
-                }
+                sendLoadingMessages(sender, warnings, "WARNING", "WARNINGS", ChatColor.YELLOW, MAX_WARNINGS);
+                sendLoadingMessages(sender, errors, "ERROR", "ERRORS", ChatColor.RED, MAX_ERRORS);
+                sendLoadSummary(sender, warnings, errors);
             }
 
             logger.enableCapture(false);
@@ -2583,6 +2550,51 @@ public class MagicController implements MageController, ChunkLoadListener {
                 logWatchdogTimer = null;
             }
         }
+    }
+
+    private void sendLoadingMessages(CommandSender sender, List<LogMessage> messages, String singularLabel, String pluralLabel, ChatColor color, int maxMessages) {
+        if (messages.isEmpty()) {
+            return;
+        }
+        if (messages.size() == 1) {
+            sender.sendMessage(color + singularLabel + ": " + ChatColor.WHITE + messages.get(0).getMessage());
+            return;
+        }
+
+        sender.sendMessage(color + pluralLabel + ": " + ChatColor.WHITE + messages.size());
+        for (int i = 0; i < messages.size() && i < maxMessages; i++) {
+            sender.sendMessage(ChatColor.WHITE + " " + messages.get(i).getMessage());
+        }
+        if (messages.size() > maxMessages) {
+            sender.sendMessage(ChatColor.GRAY + "  ...");
+        }
+    }
+
+    private void sendLoadSummary(CommandSender sender, List<LogMessage> warnings, List<LogMessage> errors) {
+        if (warnings.isEmpty() && errors.isEmpty()) {
+            sender.sendMessage(ChatColor.GREEN + "Finished loading, no issues found!");
+            return;
+        }
+        if (!errors.isEmpty()) {
+            sender.sendMessage(ChatColor.RED + "Finished loading " + ChatColor.DARK_RED + "with errors");
+            return;
+        }
+        sender.sendMessage(ChatColor.GOLD + "Finished loading " + ChatColor.YELLOW + "with warnings");
+    }
+
+    private int cancelTask(int taskId) {
+        if (taskId > 0) {
+            Bukkit.getScheduler().cancelTask(taskId);
+        }
+        return 0;
+    }
+
+    @Nullable
+    private BukkitTask cancelTask(@Nullable BukkitTask task) {
+        if (task != null) {
+            task.cancel();
+        }
+        return null;
     }
 
     @Override
@@ -3754,28 +3766,21 @@ public class MagicController implements MageController, ChunkLoadListener {
     @Override
     public Boolean getRegionCastPermission(Player player, SpellTemplate spell, Location location) {
         if (hasBypassPermission(player)) return true;
-        Boolean result = null;
-        for (CastPermissionManager manager : castManagers) {
-            Boolean managerResult = manager.getRegionCastPermission(player, spell, location);
-            if (managerResult != null) {
-                if (!managerResult) {
-                    return false;
-                }
-                if (result == null) {
-                    result = managerResult;
-                }
-            }
-        }
-        return result;
+        return getCastPermission(manager -> manager.getRegionCastPermission(player, spell, location));
     }
 
     @Nullable
     @Override
     public Boolean getPersonalCastPermission(Player player, SpellTemplate spell, Location location) {
         if (hasBypassPermission(player)) return true;
+        return getCastPermission(manager -> manager.getPersonalCastPermission(player, spell, location));
+    }
+
+    @Nullable
+    private Boolean getCastPermission(Function<CastPermissionManager, Boolean> permissionGetter) {
         Boolean result = null;
         for (CastPermissionManager manager : castManagers) {
-            Boolean managerResult = manager.getPersonalCastPermission(player, spell, location);
+            Boolean managerResult = permissionGetter.apply(manager);
             if (managerResult != null) {
                 if (!managerResult) {
                     return false;
@@ -5492,170 +5497,7 @@ public class MagicController implements MageController, ChunkLoadListener {
         String itemKey = pieces[0];
         if (pieces.length > 1) {
             String itemData = pieces[1];
-            try {
-                switch (itemKey) {
-                    case "icon": {
-                        Icon icon = getIcon(itemData);
-                        if (icon != null) {
-                            com.elmakers.mine.bukkit.api.block.MaterialAndData material = disabled ? icon.getItemDisabledMaterial(this) : icon.getItemMaterial(this);
-                            if (material != null) {
-                                itemStack = material.getItemStack(1);
-                            }
-                        }
-                    }
-                    break;
-                    case "egg": {
-                        itemStack = getSpawnEgg(itemData);
-                    }
-                    break;
-                    case "book": {
-                        com.elmakers.mine.bukkit.api.spell.SpellCategory category = null;
-                        if (itemData.equals("categories")) {
-                            itemStack = getSpellCategoriesBook();
-                        } else {
-                            if (!itemData.isEmpty() && !itemData.equalsIgnoreCase("all")) {
-                                category = categories.get(itemData);
-                            }
-                            if (category != null) {
-                                itemStack = getSpellBook(category);
-                            } else {
-                                SpellTemplate spell = getSpellTemplate(itemData);
-                                if (spell != null) {
-                                    itemStack = getSpellBook(spell);
-                                } else {
-                                    itemStack = getSpellBook();
-                                }
-                            }
-                        }
-                    }
-                    break;
-                    case "learnbook": {
-                        SpellTemplate spell = getSpellTemplate(itemData);
-                        if (spell == null) {
-                            if (callback != null) {
-                                callback.updated(null);
-                            }
-                            return null;
-                        }
-                        itemStack = getLearnSpellBook(spell);
-                    }
-                    break;
-                    case "recipe": {
-                        itemStack = CompatibilityLib.getCompatibilityUtils().getKnowledgeBook();
-                        if (itemStack != null) {
-                            if (itemData.equals("*")) {
-                                Collection<String> keys = crafting.getRecipeKeys();
-                                for (String key : keys) {
-                                    CompatibilityLib.getCompatibilityUtils().addRecipeToBook(itemStack, plugin, key);
-                                }
-                            } else {
-                                String[] recipeKeys = StringUtils.split(itemData, ",");
-                                for (String recipe : recipeKeys) {
-                                    CompatibilityLib.getCompatibilityUtils().addRecipeToBook(itemStack, plugin, recipe);
-                                }
-                            }
-                        }
-                    }
-                    break;
-                    case "recipes": {
-                        itemStack = CompatibilityLib.getCompatibilityUtils().getKnowledgeBook();
-                        if (itemStack != null) {
-                            if (itemData.equals("*")) {
-                                Collection<String> keys = crafting.getRecipeKeys();
-                                for (String key : keys) {
-                                    CompatibilityLib.getCompatibilityUtils().addRecipeToBook(itemStack, plugin, key);
-                                }
-                            } else {
-                                String[] recipeKeys = StringUtils.split(itemData, ",");
-                                for (String recipe : recipeKeys) {
-                                    MageClassTemplate mageClass = getMageClassTemplate(recipe);
-                                    if (mageClass != null) {
-                                        for (String key : mageClass.getRecipies()) {
-                                            CompatibilityLib.getCompatibilityUtils().addRecipeToBook(itemStack, plugin, key);
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    break;
-                    case "spell": {
-                        // Fix delimiter replaced above, to handle spell levels
-                        String spellKey = itemData.replace(":", "|");
-                        itemStack = createSpellItem(spellKey, mage, brief);
-                    }
-                    break;
-                    case "wand": {
-                        com.elmakers.mine.bukkit.api.wand.Wand wand = createWand(itemData, mage);
-                        if (wand != null) {
-                            itemStack = wand.getItem();
-                        }
-                    }
-                    break;
-                    case "upgrade": {
-                        com.elmakers.mine.bukkit.api.wand.Wand wand = createWand(itemData, mage);
-                        if (wand != null) {
-                            wand.makeUpgrade();
-                            itemStack = wand.getItem();
-                        }
-                    }
-                    break;
-                    case "brush": {
-                        itemStack = createBrushItem(itemData);
-                    }
-                    break;
-                    case "item": {
-                        itemStack = createGenericItem(itemData);
-                    }
-                    break;
-                    default: {
-                        // Currency
-                        Currency currency = getCurrency(itemKey);
-                        com.elmakers.mine.bukkit.api.block.MaterialAndData currencyIcon = currency == null ? null : currency.getIcon();
-                        if (pieces.length > 1 && currencyIcon != null) {
-                            itemStack = currencyIcon.getItemStack(1);
-                            if (CompatibilityLib.getItemUtils().isEmpty(itemStack)) {
-                                getLogger().warning("Trying to get a currency item for '" + itemKey + "', which an invalid icon defined");
-                                return null;
-                            }
-                            ItemMeta meta = itemStack.getItemMeta();
-                            String name = currency.getName(messages);
-                            String itemName = messages.get("currency." + itemKey + ".item_name", messages.get("currency.default.item_name"));
-                            itemName = itemName.replace("$type", name);
-                            itemName = itemName.replace("$amount", itemData);
-                            meta.setDisplayName(itemName);
-                            int intAmount;
-                            try {
-                                intAmount = Integer.parseInt(itemData);
-                            } catch (Exception ex) {
-                                getLogger().warning("Invalid amount '" + itemData + "' in " + currency.getKey() + " cost: " + magicItemKey);
-                                if (callback != null) {
-                                    callback.updated(null);
-                                }
-                                return null;
-                            }
-
-                            String currencyDescription = messages.get("currency." + itemKey + ".description", messages.get("currency.default.description"));
-                            if (currencyDescription.length() > 0) {
-                                currencyDescription = currencyDescription.replace("$type", name);
-                                currencyDescription = currencyDescription.replace("$amount", itemData);
-                                List<String> lore = new ArrayList<>();
-                                CompatibilityLib.getInventoryUtils().wrapText(CompatibilityLib.getCompatibilityUtils().translateColors(currencyDescription), lore);
-                                meta.setLore(lore);
-                            }
-                            itemStack.setItemMeta(meta);
-                            itemStack = CompatibilityLib.getItemUtils().makeReal(itemStack);
-                            CompatibilityLib.getItemUtils().makeUnbreakable(itemStack);
-                            CompatibilityLib.getItemUtils().hideFlags(itemStack, CompatibilityConstants.ALL_HIDE_FLAGS);
-                            Object currencyNode = CompatibilityLib.getNBTUtils().createTag(itemStack, "currency");
-                            CompatibilityLib.getNBTUtils().setInt(currencyNode, "amount", intAmount);
-                            CompatibilityLib.getNBTUtils().setString(currencyNode, "type", itemKey);
-                        }
-                    }
-                }
-            } catch (Exception ex) {
-                getLogger().log(Level.WARNING, "Error creating item: " + magicItemKey, ex);
-            }
+            itemStack = createNamespacedItem(itemKey, itemData, mage, brief, callback, disabled);
         }
 
         // Final fallback, may be a plain item without any data, a
@@ -5713,6 +5555,176 @@ public class MagicController implements MageController, ChunkLoadListener {
         // Always call the callback if one was given.
         if (callback != null) {
             callback.updated(itemStack);
+        }
+        return itemStack;
+    }
+
+    @Nullable
+    private ItemStack createNamespacedItem(String itemKey, String itemData, Mage mage, boolean brief, ItemUpdatedCallback callback, boolean disabled) {
+        ItemStack itemStack = null;
+        try {
+            switch (itemKey) {
+                case "icon": {
+                    Icon icon = getIcon(itemData);
+                    if (icon != null) {
+                        com.elmakers.mine.bukkit.api.block.MaterialAndData material = disabled ? icon.getItemDisabledMaterial(this) : icon.getItemMaterial(this);
+                        if (material != null) {
+                            itemStack = material.getItemStack(1);
+                        }
+                    }
+                }
+                break;
+                case "egg": {
+                    itemStack = getSpawnEgg(itemData);
+                }
+                break;
+                case "book": {
+                    com.elmakers.mine.bukkit.api.spell.SpellCategory category = null;
+                    if (itemData.equals("categories")) {
+                        itemStack = getSpellCategoriesBook();
+                    } else {
+                        if (!itemData.isEmpty() && !itemData.equalsIgnoreCase("all")) {
+                            category = categories.get(itemData);
+                        }
+                        if (category != null) {
+                            itemStack = getSpellBook(category);
+                        } else {
+                            SpellTemplate spell = getSpellTemplate(itemData);
+                            if (spell != null) {
+                                itemStack = getSpellBook(spell);
+                            } else {
+                                itemStack = getSpellBook();
+                            }
+                        }
+                    }
+                }
+                break;
+                case "learnbook": {
+                    SpellTemplate spell = getSpellTemplate(itemData);
+                    if (spell == null) {
+                        if (callback != null) {
+                            callback.updated(null);
+                        }
+                        return null;
+                    }
+                    itemStack = getLearnSpellBook(spell);
+                }
+                break;
+                case "recipe": {
+                    itemStack = CompatibilityLib.getCompatibilityUtils().getKnowledgeBook();
+                    if (itemStack != null) {
+                        if (itemData.equals("*")) {
+                            Collection<String> keys = crafting.getRecipeKeys();
+                            for (String key : keys) {
+                                CompatibilityLib.getCompatibilityUtils().addRecipeToBook(itemStack, plugin, key);
+                            }
+                        } else {
+                            String[] recipeKeys = StringUtils.split(itemData, ",");
+                            for (String recipe : recipeKeys) {
+                                CompatibilityLib.getCompatibilityUtils().addRecipeToBook(itemStack, plugin, recipe);
+                            }
+                        }
+                    }
+                }
+                break;
+                case "recipes": {
+                    itemStack = CompatibilityLib.getCompatibilityUtils().getKnowledgeBook();
+                    if (itemStack != null) {
+                        if (itemData.equals("*")) {
+                            Collection<String> keys = crafting.getRecipeKeys();
+                            for (String key : keys) {
+                                CompatibilityLib.getCompatibilityUtils().addRecipeToBook(itemStack, plugin, key);
+                            }
+                        } else {
+                            String[] recipeKeys = StringUtils.split(itemData, ",");
+                            for (String recipe : recipeKeys) {
+                                MageClassTemplate mageClass = getMageClassTemplate(recipe);
+                                if (mageClass != null) {
+                                    for (String key : mageClass.getRecipies()) {
+                                        CompatibilityLib.getCompatibilityUtils().addRecipeToBook(itemStack, plugin, key);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                break;
+                case "spell": {
+                    // Fix delimiter replaced above, to handle spell levels
+                    String spellKey = itemData.replace(":", "|");
+                    itemStack = createSpellItem(spellKey, mage, brief);
+                }
+                break;
+                case "wand": {
+                    com.elmakers.mine.bukkit.api.wand.Wand wand = createWand(itemData, mage);
+                    if (wand != null) {
+                        itemStack = wand.getItem();
+                    }
+                }
+                break;
+                case "upgrade": {
+                    com.elmakers.mine.bukkit.api.wand.Wand wand = createWand(itemData, mage);
+                    if (wand != null) {
+                        wand.makeUpgrade();
+                        itemStack = wand.getItem();
+                    }
+                }
+                break;
+                case "brush": {
+                    itemStack = createBrushItem(itemData);
+                }
+                break;
+                case "item": {
+                    itemStack = createGenericItem(itemData);
+                }
+                break;
+                default: {
+                    // Currency
+                    Currency currency = getCurrency(itemKey);
+                    com.elmakers.mine.bukkit.api.block.MaterialAndData currencyIcon = currency == null ? null : currency.getIcon();
+                    if (currencyIcon != null) {
+                        itemStack = currencyIcon.getItemStack(1);
+                        if (CompatibilityLib.getItemUtils().isEmpty(itemStack)) {
+                            getLogger().warning("Trying to get a currency item for '" + itemKey + "', which an invalid icon defined");
+                            return null;
+                        }
+                        ItemMeta meta = itemStack.getItemMeta();
+                        String name = currency.getName(messages);
+                        String itemName = messages.get("currency." + itemKey + ".item_name", messages.get("currency.default.item_name"));
+                        itemName = itemName.replace("$type", name);
+                        itemName = itemName.replace("$amount", itemData);
+                        meta.setDisplayName(itemName);
+                        int intAmount;
+                        try {
+                            intAmount = Integer.parseInt(itemData);
+                        } catch (Exception ex) {
+                            getLogger().warning("Invalid amount '" + itemData + "' in " + currency.getKey() + " cost: " + itemKey + ":" + itemData);
+                            if (callback != null) {
+                                callback.updated(null);
+                            }
+                            return null;
+                        }
+
+                        String currencyDescription = messages.get("currency." + itemKey + ".description", messages.get("currency.default.description"));
+                        if (currencyDescription.length() > 0) {
+                            currencyDescription = currencyDescription.replace("$type", name);
+                            currencyDescription = currencyDescription.replace("$amount", itemData);
+                            List<String> lore = new ArrayList<>();
+                            CompatibilityLib.getInventoryUtils().wrapText(CompatibilityLib.getCompatibilityUtils().translateColors(currencyDescription), lore);
+                            meta.setLore(lore);
+                        }
+                        itemStack.setItemMeta(meta);
+                        itemStack = CompatibilityLib.getItemUtils().makeReal(itemStack);
+                        CompatibilityLib.getItemUtils().makeUnbreakable(itemStack);
+                        CompatibilityLib.getItemUtils().hideFlags(itemStack, CompatibilityConstants.ALL_HIDE_FLAGS);
+                        Object currencyNode = CompatibilityLib.getNBTUtils().createTag(itemStack, "currency");
+                        CompatibilityLib.getNBTUtils().setInt(currencyNode, "amount", intAmount);
+                        CompatibilityLib.getNBTUtils().setString(currencyNode, "type", itemKey);
+                    }
+                }
+            }
+        } catch (Exception ex) {
+            getLogger().log(Level.WARNING, "Error creating item: " + itemKey + ":" + itemData, ex);
         }
         return itemStack;
     }
@@ -7439,9 +7451,13 @@ public class MagicController implements MageController, ChunkLoadListener {
 
     public void finalizeIntegration() {
         logger.setContext("integration");
-
         final PluginManager pluginManager = plugin.getServer().getPluginManager();
+        finalizeIndicatorAndMobArenaIntegration(pluginManager);
+        finalizeDisguiseAndModelIntegrations(pluginManager);
+        finalizeRPGPluginIntegrations(pluginManager);
+    }
 
+    private void finalizeIndicatorAndMobArenaIntegration(PluginManager pluginManager) {
         // Check for damage indicator holograms
         Plugin hologramPlugin = pluginManager.getPlugin("DamageIndicatorsFree");
         if (hologramPlugin != null) {
@@ -7468,7 +7484,9 @@ public class MagicController implements MageController, ChunkLoadListener {
         } else {
             getLogger().info("MobArena integration disabled");
         }
+    }
 
+    private void finalizeDisguiseAndModelIntegrations(PluginManager pluginManager) {
         // Check for LibsDisguise
         Plugin libsDisguisePlugin = pluginManager.getPlugin("LibsDisguises");
         if (libsDisguisePlugin == null) {
@@ -7504,7 +7522,9 @@ public class MagicController implements MageController, ChunkLoadListener {
             modelEngineManager = null;
             getLogger().info("ModelEngine integration disabled");
         }
+    }
 
+    private void finalizeRPGPluginIntegrations(PluginManager pluginManager) {
         // Try to link to Heroes:
         try {
             Plugin heroesPlugin = pluginManager.getPlugin("Heroes");
@@ -7611,6 +7631,7 @@ public class MagicController implements MageController, ChunkLoadListener {
         }
     }
 
+
     private void finalizeIntegrationPreLoad() {
         logger.setContext("integration");
         final PluginManager pluginManager = plugin.getServer().getPluginManager();
@@ -7632,10 +7653,19 @@ public class MagicController implements MageController, ChunkLoadListener {
 
     public void finalizeIntegrationPostLoad(ConfigurationSection mainConfiguration) {
         logger.setContext("integration");
-
         final PluginManager pluginManager = plugin.getServer().getPluginManager();
         blockController.finalizeIntegration();
+        finalizeCombatAndArenasIntegrations(pluginManager);
+        finalizeCommunicationAndMappingIntegrations(pluginManager);
+        finalizeProtectionAndRegionIntegrations(pluginManager);
+        finalizeSocialAndVisualIntegrations(pluginManager);
+        finalizeClaimsIntegrations(pluginManager);
+        // Load integrations for plugins that can't be attached until after load time
+        loadPostIntegrations(mainConfiguration);
+        finalizeScheduledTasks();
+    }
 
+    private void finalizeCombatAndArenasIntegrations(PluginManager pluginManager) {
         // Check for BattleArenas
         Plugin battleArenaPlugin = pluginManager.getPlugin("BattleArena");
         if (battleArenaPlugin != null) {
@@ -7668,7 +7698,9 @@ public class MagicController implements MageController, ChunkLoadListener {
             pluginManager.registerEvents(new MinigamesListener(this), plugin);
             getLogger().info("Minigames found, wands will deactivate before joining a minigame");
         }
+    }
 
+    private void finalizeCommunicationAndMappingIntegrations(PluginManager pluginManager) {
         // Check for LogBlock
         Plugin logBlockPlugin = pluginManager.getPlugin("LogBlock");
         if (logBlockPlugin == null || !logBlockPlugin.isEnabled()) {
@@ -7737,7 +7769,9 @@ public class MagicController implements MageController, ChunkLoadListener {
         } catch (Throwable ignored) {
 
         }
+    }
 
+    private void finalizeProtectionAndRegionIntegrations(PluginManager pluginManager) {
         // Link to factions
         factionsManager.initialize(plugin);
 
@@ -7827,7 +7861,9 @@ public class MagicController implements MageController, ChunkLoadListener {
         if (elementals != null) {
             getLogger().info("Elementals found, integrating.");
         }
+    }
 
+    private void finalizeSocialAndVisualIntegrations(PluginManager pluginManager) {
         // Check for Shopkeepers, this is an optimization to avoid scanning for metadata if the plugin is not
         // present
         hasShopkeepers = pluginManager.isPluginEnabled("Shopkeepers");
@@ -7924,7 +7960,9 @@ public class MagicController implements MageController, ChunkLoadListener {
         } else {
             getLogger().info("Citadel integration disabled.");
         }
+    }
 
+    private void finalizeClaimsIntegrations(PluginManager pluginManager) {
         // Residence
         if (residenceConfiguration.getBoolean("enabled")) {
             if (pluginManager.isPluginEnabled("Residence")) {
@@ -8000,10 +8038,9 @@ public class MagicController implements MageController, ChunkLoadListener {
         } else {
             getLogger().info("UltimateClans Lands integration disabled.");
         }
+    }
 
-        // Load integrations for plugins that can't be attached until after load time
-        loadPostIntegrations(mainConfiguration);
-
+    private void finalizeScheduledTasks() {
         // Set up the Mage update timer
         final MageUpdateTask mageTask = new MageUpdateTask(this);
         Bukkit.getScheduler().scheduleSyncRepeatingTask(plugin, mageTask, 0, mageUpdateFrequency);
@@ -8024,9 +8061,17 @@ public class MagicController implements MageController, ChunkLoadListener {
     protected void loadProperties(CommandSender sender, ConfigurationSection properties) {
         if (properties == null) return;
 
-        // Delegate to resource pack handler
         resourcePacks.load(properties, sender, !loaded);
+        loadLoggingAndDebugProperties(properties);
+        loadSchedulingAndWorkProperties(properties);
+        loadPowerAndHitboxLimits(properties);
+        loadCastBehaviorProperties(properties);
+        loadTeamAndMessageProperties(properties);
+        loadWandAndMageGlobalSettings(properties);
+        loadSubControllersAndTimers(sender, properties);
+    }
 
+    private void loadLoggingAndDebugProperties(ConfigurationSection properties) {
         logVerbosity = properties.getInt("log_verbosity", 0);
         debugConfigurationFiles = properties.getBoolean("debug_configuration_files", false);
         if (debugConfigurationFiles) {
@@ -8041,18 +8086,9 @@ public class MagicController implements MageController, ChunkLoadListener {
         logger.setColorize(properties.getBoolean("colored_logs", true));
 
         // Cancel any pending save tasks
-        if (autoSaveTaskId > 0) {
-            Bukkit.getScheduler().cancelTask(autoSaveTaskId);
-            autoSaveTaskId = 0;
-        }
-        if (configCheckTask != null) {
-            configCheckTask.cancel();
-            configCheckTask = null;
-        }
-        if (logNotifyTask != null) {
-            logNotifyTask.cancel();
-            logNotifyTask = null;
-        }
+        autoSaveTaskId = cancelTask(autoSaveTaskId);
+        configCheckTask = cancelTask(configCheckTask);
+        logNotifyTask = cancelTask(logNotifyTask);
 
         debugEffectLib = properties.getBoolean("debug_effects", false);
         com.elmakers.mine.bukkit.effect.EffectPlayer.debugEffects(debugEffectLib);
@@ -8061,7 +8097,9 @@ public class MagicController implements MageController, ChunkLoadListener {
         CompatibilityLib.getCompatibilityUtils().load(properties);
         com.elmakers.mine.bukkit.effect.EffectPlayer.setParticleRange(properties.getInt("particle_range", com.elmakers.mine.bukkit.effect.EffectPlayer.PARTICLE_RANGE));
         com.elmakers.mine.bukkit.effect.EffectPlayer.setForceShow(properties.getBoolean("particle_force_show", false));
+    }
 
+    private void loadSchedulingAndWorkProperties(ConfigurationSection properties) {
         loadWandSlotTemplates(properties.getConfigurationSection("wand_slots"));
         loadWandSets(properties.getConfigurationSection("wand_sets"));
         urlIconsEnabled = properties.getBoolean("url_icons_enabled", urlIconsEnabled);
@@ -8112,7 +8150,9 @@ public class MagicController implements MageController, ChunkLoadListener {
         loadSkulls(properties.getConfigurationSection("skulls"));
         loadOtherMaterials(properties.getConfigurationSection("migrate_materials"));
         WandCommandExecutor.CONSOLE_BYPASS_MODIFIABLE = properties.getBoolean("console_bypass_modifiable", properties.getBoolean("console_bypass_locked_wands", true));
+    }
 
+    private void loadPowerAndHitboxLimits(ConfigurationSection properties) {
         maxPower = (float) properties.getDouble("max_power", maxPower);
         ConfigurationSection damageTypes = properties.getConfigurationSection("damage_types");
         if (damageTypes != null) {
@@ -8142,7 +8182,9 @@ public class MagicController implements MageController, ChunkLoadListener {
         if (properties.contains("max_height")) {
             CompatibilityLib.getCompatibilityUtils().configureMaxHeights(properties.getConfigurationSection("max_height"));
         }
+    }
 
+    private void loadCastBehaviorProperties(ConfigurationSection properties) {
         // These were changed from set values to multipliers, we're going to translate for backwards compatibility.
         // The default configs used to have these set to either 0 or 100, where 100 indicated that we should be
         // turning off the costs/cooldowns.
@@ -8222,6 +8264,9 @@ public class MagicController implements MageController, ChunkLoadListener {
         if (mobArenaManager != null) {
             mobArenaManager.configure(mobArenaConfiguration);
         }
+    }
+
+    private void loadTeamAndMessageProperties(ConfigurationSection properties) {
         String swingTypeString = properties.getString("left_click_type");
         try {
             swingType = SwingType.valueOf(swingTypeString.toUpperCase());
@@ -8312,7 +8357,9 @@ public class MagicController implements MageController, ChunkLoadListener {
         for (String exampleKey : exampleKeys) {
             builtinExternalExamples.put(exampleKey, builtinExampleConfigs.getString(exampleKey));
         }
+    }
 
+    private void loadWandAndMageGlobalSettings(ConfigurationSection properties) {
         Wand.regenWhileInactive = properties.getBoolean("regenerate_while_inactive", Wand.regenWhileInactive);
         if (properties.contains("mana_display")) {
             String manaDisplay = properties.getString("mana_display");
@@ -8433,7 +8480,9 @@ public class MagicController implements MageController, ChunkLoadListener {
         Wand.inventoryCycleSound = ConfigurationUtils.toSoundEffect(properties.getString("wand_inventory_cycle_sound"));
         Wand.noActionSound = ConfigurationUtils.toSoundEffect(properties.getString("wand_no_action_sound"));
         Wand.itemPickupSound = ConfigurationUtils.toSoundEffect(properties.getString("wand_pickup_item_sound"));
+    }
 
+    private void loadSubControllersAndTimers(CommandSender sender, ConfigurationSection properties) {
         // Configure sub-controllers
         explosionController.loadProperties(properties);
         inventoryController.loadProperties(properties);

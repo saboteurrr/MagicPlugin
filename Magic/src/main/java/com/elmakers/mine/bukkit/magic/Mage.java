@@ -4495,12 +4495,19 @@ public class Mage implements CostReducer, com.elmakers.mine.bukkit.api.magic.Mag
     public void updatePassiveEffects() {
         // Do modifiers first, since they could modify attribute values
         updateModifiers();
+        double previousHealthScale = healthScale;
+        resetPassiveEffectsState();
+        applyPassiveAttributesFromSources();
+        WandProperties setBonus = processWandSetBonuses();
+        List<PotionEffectType> previousEffects = applyPassiveEffectsFromSources(setBonus);
+        finalizePassiveEffectsOnEntity(previousHealthScale, previousEffects);
+    }
 
+    private void resetPassiveEffectsState() {
         // Need to do attributes next, in case they are used by any of the other properties
         attributes.clear();
 
         // Reset all properties before adding in passive effects
-        double previousHealthScale = healthScale;
         healthScale = 0;
         ignoreParticles = false;
         manaPerDamage = 0.0f;
@@ -4512,6 +4519,34 @@ public class Mage implements CostReducer, com.elmakers.mine.bukkit.api.magic.Mag
         reflectChance = 0;
         reflectFOV = 0.0f;
 
+        // Now do everything else
+        protection.clear();
+        strength.clear();
+        weakness.clear();
+        castOverrides.clear();
+        superProtected = false;
+        superPowered = false;
+        ignoredByMobs = false;
+        allowContainerCopy = false;
+
+        // Try to avoid constantly re-creating these, don't clear the whole map
+        for (List<TriggeredSpell> triggerList : triggers.values()) {
+            triggerList.clear();
+        }
+        triggeredSpells.clear();
+
+        spEarnMultiplier = 1;
+        cooldownReduction = 0;
+        costReduction = 0;
+        consumeReduction = 0;
+        manaMaxBoost = 0;
+        manaRegenerationBoost = 0;
+        cooldownFree = false;
+        costFree = false;
+        consumeFree = false;
+    }
+
+    private void applyPassiveAttributesFromSources() {
         addPassiveAttributes(properties);
         if (activeClass != null) {
             addPassiveAttributes(activeClass);
@@ -4524,7 +4559,9 @@ public class Mage implements CostReducer, com.elmakers.mine.bukkit.api.magic.Mag
         for (MageModifier modifier : modifiers.values()) {
             addPassiveAttributes(modifier, AttributeOperation.ADD_NUMBER, InventorySlot.FREE);
         }
+    }
 
+    private WandProperties processWandSetBonuses() {
         // Count up wand sets to look for bonuses before adding in wand properties
         boolean hadSets = !wandSets.isEmpty();
         wandSets.clear();
@@ -4576,35 +4613,11 @@ public class Mage implements CostReducer, com.elmakers.mine.bukkit.api.magic.Mag
             }
         }
         reloadAttributes();
+        return setBonus;
+    }
 
-        // Now do everything else
-        protection.clear();
-        strength.clear();
-        weakness.clear();
-        castOverrides.clear();
-        superProtected = false;
-        superPowered = false;
-        ignoredByMobs = false;
-        allowContainerCopy = false;
-
-        // Try to avoid constantly re-creating these, don't clear the whole map
-        for (List<TriggeredSpell> triggerList : triggers.values()) {
-            triggerList.clear();
-        }
-        triggeredSpells.clear();
-
-        spEarnMultiplier = 1;
-        cooldownReduction = 0;
-        costReduction = 0;
-        consumeReduction = 0;
-        manaMaxBoost = 0;
-        manaRegenerationBoost = 0;
-        cooldownFree = false;
-        costFree = false;
-        consumeFree = false;
-
+    private List<PotionEffectType> applyPassiveEffectsFromSources(WandProperties setBonus) {
         List<PotionEffectType> currentEffects = new ArrayList<>(effectivePotionEffects.keySet());
-        LivingEntity entity = getLivingEntity();
         effectivePotionEffects.clear();
 
         if (setBonus != null) {
@@ -4639,7 +4652,11 @@ public class Mage implements CostReducer, com.elmakers.mine.bukkit.api.magic.Mag
                 addPassiveEffects(armorWand, false);
             }
         }
+        return currentEffects;
+    }
 
+    private void finalizePassiveEffectsOnEntity(double previousHealthScale, List<PotionEffectType> currentEffects) {
+        LivingEntity entity = getLivingEntity();
         if (entity != null)
         {
             for (PotionEffectType effectType : currentEffects) {
@@ -5280,6 +5297,55 @@ public class Mage implements CostReducer, com.elmakers.mine.bukkit.api.magic.Mag
         if (globalValue != null) {
             return globalValue;
         }
+        Double entityValue = getEntityStateAttribute(attributeKey, compatibilityUtils);
+        if (entityValue != null) {
+            return entityValue;
+        }
+        Double locationValue = getLocationAndWorldAttribute(attributeKey);
+        if (locationValue != null) {
+            return locationValue;
+        }
+        Double combatValue = getCombatStatAttribute(attributeKey);
+        if (combatValue != null) {
+            return combatValue;
+        }
+        // Fallback: enchantments and potion effects
+        Player player = getPlayer();
+        if (player != null) {
+            Enchantment enchantment = CompatibilityLib.getCompatibilityUtils().getEnchantmentByKey(attributeKey);
+            if (enchantment != null) {
+                // TODO: Be smarter about, for instance, holding enchanted armor?
+                ItemStack item = player.getInventory().getItemInMainHand();
+                double level = 0;
+                if (item != null && item.hasItemMeta()) {
+                    ItemMeta meta = item.getItemMeta();
+                    level = Math.max(level, meta.getEnchantLevel(enchantment));
+                }
+                for (ItemStack armor : player.getInventory().getArmorContents()) {
+                    if (armor != null && armor.hasItemMeta()) {
+                        ItemMeta meta = armor.getItemMeta();
+                        level = Math.max(level, meta.getEnchantLevel(enchantment));
+                    }
+                }
+                return level;
+            }
+        }
+        LivingEntity living = getLivingEntity();
+        if (living != null) {
+            PotionEffectType potionEffectType = PotionEffectType.getByName(attributeKey.toUpperCase());
+            if (potionEffectType != null) {
+                for (PotionEffect effect : living.getActivePotionEffects()) {
+                    if (effect.getType() == potionEffectType) {
+                        return (double)effect.getAmplifier() + 1;
+                    }
+                }
+                return 0.0;
+            }
+        }
+        return null;
+    }
+
+    private Double getEntityStateAttribute(String attributeKey, CompatibilityUtils compatibilityUtils) {
         switch (attributeKey) {
             case "custom_model_data": {
                 Player player = getPlayer();
@@ -5330,6 +5396,12 @@ public class Mage implements CostReducer, com.elmakers.mine.bukkit.api.magic.Mag
             case "mana_max": return (double)getEffectiveManaMax();
             case "xp": return (double)getExperience();
             case "level": return (double)getLevel();
+            default: return null;
+        }
+    }
+
+    private Double getLocationAndWorldAttribute(String attributeKey) {
+        switch (attributeKey) {
             case "time": {
                 Location location = getLocation();
                 return location == null ? null : (double)location.getWorld().getTime();
@@ -5378,6 +5450,12 @@ public class Mage implements CostReducer, com.elmakers.mine.bukkit.api.magic.Mag
                 Location location = getLocation();
                 return location == null ? null : (double)location.getWorld().getDifficulty().ordinal();
             }
+            default: return null;
+        }
+    }
+
+    private Double getCombatStatAttribute(String attributeKey) {
+        switch (attributeKey) {
             case "damage": {
                 return getLastDamage();
             }
@@ -5401,41 +5479,7 @@ public class Mage implements CostReducer, com.elmakers.mine.bukkit.api.magic.Mag
             case "velocity": {
                 return getVelocity().length();
             }
-
-            default:
-                Player player = getPlayer();
-                if (player != null) {
-                    Enchantment enchantment = CompatibilityLib.getCompatibilityUtils().getEnchantmentByKey(attributeKey);
-                    if (enchantment != null) {
-                        // TODO: Be smarter about, for instance, holding enchanted armor?
-                        ItemStack item = player.getInventory().getItemInMainHand();
-                        double level = 0;
-                        if (item != null && item.hasItemMeta()) {
-                            ItemMeta meta = item.getItemMeta();
-                            level = Math.max(level, meta.getEnchantLevel(enchantment));
-                        }
-                        for (ItemStack armor : player.getInventory().getArmorContents()) {
-                            if (armor != null && armor.hasItemMeta()) {
-                                ItemMeta meta = armor.getItemMeta();
-                                level = Math.max(level, meta.getEnchantLevel(enchantment));
-                            }
-                        }
-                        return level;
-                    }
-                }
-                LivingEntity living = getLivingEntity();
-                if (living != null) {
-                    PotionEffectType potionEffectType = PotionEffectType.getByName(attributeKey.toUpperCase());
-                    if (potionEffectType != null) {
-                        for (PotionEffect effect : living.getActivePotionEffects()) {
-                            if (effect.getType() == potionEffectType) {
-                                return (double)effect.getAmplifier() + 1;
-                            }
-                        }
-                        return 0.0;
-                    }
-                }
-                return null;
+            default: return null;
         }
     }
 
