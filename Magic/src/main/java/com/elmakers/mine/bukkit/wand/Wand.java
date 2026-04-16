@@ -2195,6 +2195,19 @@ public class Wand extends WandProperties implements CostReducer, com.elmakers.mi
     @Override
     public void loadProperties() {
         super.loadProperties();
+        loadSlotAndRequirementProperties();
+        // Read path first since it can be used to override any other property
+        path = getString("path");
+        // Reload base properties, this reloading is unfortunate but we need CasterProperties
+        // to be aware of slotted upgrades and requirements
+        super.loadProperties();
+        loadBasicWandProperties();
+        loadActionAndModeProperties();
+        loadIdentityAndIconProperties();
+        loadInventoryAndSpellProperties();
+    }
+
+    private void loadSlotAndRequirementProperties() {
         // Slotted upgrades can override anything else
         slots = null;
         List<String> slotKeys = getStringList("slots");
@@ -2258,14 +2271,9 @@ public class Wand extends WandProperties implements CostReducer, com.elmakers.mi
             requirementProperties = null;
             requirementConfiguration = null;
         }
+    }
 
-        // Read path first since it can be used to override any other property
-        path = getString("path");
-
-        // Reload base properties, this reloading is unfortunate but we need CasterProperties
-        // to be aware of slotted upgrades and requirements
-        super.loadProperties();
-
+    private void loadBasicWandProperties() {
         if (OLD_WAND_LOCKED) {
             // Can't support locked wands this way
             locked = false;
@@ -2345,7 +2353,9 @@ public class Wand extends WandProperties implements CostReducer, com.elmakers.mi
                 resetManaOnActivate = getDouble("reset_mana_on_activate", 0);
             }
         }
+    }
 
+    private void loadActionAndModeProperties() {
         if (hasProperty("effect_particle")) {
             effectParticle = ConfigurationUtils.toParticleEffect(getString("effect_particle"));
             effectParticleData = 0;
@@ -2419,7 +2429,9 @@ public class Wand extends WandProperties implements CostReducer, com.elmakers.mi
                 manualQuickCastDisabled = false;
             }
         }
+    }
 
+    private void loadIdentityAndIconProperties() {
         owner = getString("owner");
         ownerId = getString("owner_id");
         template = getString("template");
@@ -2564,7 +2576,9 @@ public class Wand extends WandProperties implements CostReducer, com.elmakers.mi
         if (isHeroes) {
             hasSpellProgression = true;
         }
+    }
 
+    private void loadInventoryAndSpellProperties() {
         brushInventory.clear();
         spellInventory.clear();
         limitSpellsToPath = getBoolean("limit_spells_to_path");
