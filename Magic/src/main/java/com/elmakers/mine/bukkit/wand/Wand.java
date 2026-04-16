@@ -2040,6 +2040,13 @@ public class Wand extends WandProperties implements CostReducer, com.elmakers.mi
     protected void loadParameters() {
         // These should only be parameters that are safe (performance-wise in particular)
         // to change on the fly without fully reloading the wand
+        loadBasicWandParameters();
+        loadEffectParameters();
+        loadActionParameters();
+        loadDisplayParameters();
+    }
+
+    private void loadBasicWandParameters() {
         quietLevel = getInt("quiet");
         if (quietLevel == 0 && getBoolean("quiet")) {
             quietLevel = 1;
@@ -2061,7 +2068,9 @@ public class Wand extends WandProperties implements CostReducer, com.elmakers.mi
         }
         useActiveIcon = getBoolean("use_active_icon", true);
         spellWandName = getBoolean("spells_use_wand_name", true);
+    }
 
+    private void loadEffectParameters() {
         activeEffectsOnly = getBoolean("active_effects");
         effectParticleData = getFloat("effect_particle_data");
         effectParticleCount = getInt("effect_particle_count");
@@ -2084,6 +2093,20 @@ public class Wand extends WandProperties implements CostReducer, com.elmakers.mi
             castParameters = null;
         }
 
+        // Some cleanup and sanity checks. In theory we don't need to store any non-zero value (as it is with the traders)
+        // so try to keep defaults as 0/0.0/false.
+        if (effectSound == null) {
+            effectSoundInterval = 0;
+        } else {
+            effectSoundInterval = (effectSoundInterval == 0) ? 5 : effectSoundInterval;
+        }
+
+        if (effectParticle == null) {
+            effectParticleInterval = 0;
+        }
+    }
+
+    private void loadActionParameters() {
         leftClickAction = parseWandAction(getString("left_click"), leftClickAction);
         rightClickAction = parseWandAction(getString("right_click"), rightClickAction);
         dropAction = parseWandAction(getString("drop"), dropAction);
@@ -2098,7 +2121,9 @@ public class Wand extends WandProperties implements CostReducer, com.elmakers.mi
         // Controls whose defaults rely on keybinding
         undroppable = getBoolean("undroppable", dropAction != WandAction.NONE);
         swappable = getBoolean("swappable", swapAction == WandAction.NONE);
+    }
 
+    private void loadDisplayParameters() {
         // Update glyph bar configuration
         glyphHotbar.load(getConfigurationSection("glyph_hotbar"));
 
@@ -2177,18 +2202,6 @@ public class Wand extends WandProperties implements CostReducer, com.elmakers.mi
         }
         if (actionBarMessage == null) {
             actionBarMana = false;
-        }
-
-        // Some cleanup and sanity checks. In theory we don't need to store any non-zero value (as it is with the traders)
-        // so try to keep defaults as 0/0.0/false.
-        if (effectSound == null) {
-            effectSoundInterval = 0;
-        } else {
-            effectSoundInterval = (effectSoundInterval == 0) ? 5 : effectSoundInterval;
-        }
-
-        if (effectParticle == null) {
-            effectParticleInterval = 0;
         }
     }
 

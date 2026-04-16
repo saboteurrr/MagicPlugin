@@ -5497,170 +5497,7 @@ public class MagicController implements MageController, ChunkLoadListener {
         String itemKey = pieces[0];
         if (pieces.length > 1) {
             String itemData = pieces[1];
-            try {
-                switch (itemKey) {
-                    case "icon": {
-                        Icon icon = getIcon(itemData);
-                        if (icon != null) {
-                            com.elmakers.mine.bukkit.api.block.MaterialAndData material = disabled ? icon.getItemDisabledMaterial(this) : icon.getItemMaterial(this);
-                            if (material != null) {
-                                itemStack = material.getItemStack(1);
-                            }
-                        }
-                    }
-                    break;
-                    case "egg": {
-                        itemStack = getSpawnEgg(itemData);
-                    }
-                    break;
-                    case "book": {
-                        com.elmakers.mine.bukkit.api.spell.SpellCategory category = null;
-                        if (itemData.equals("categories")) {
-                            itemStack = getSpellCategoriesBook();
-                        } else {
-                            if (!itemData.isEmpty() && !itemData.equalsIgnoreCase("all")) {
-                                category = categories.get(itemData);
-                            }
-                            if (category != null) {
-                                itemStack = getSpellBook(category);
-                            } else {
-                                SpellTemplate spell = getSpellTemplate(itemData);
-                                if (spell != null) {
-                                    itemStack = getSpellBook(spell);
-                                } else {
-                                    itemStack = getSpellBook();
-                                }
-                            }
-                        }
-                    }
-                    break;
-                    case "learnbook": {
-                        SpellTemplate spell = getSpellTemplate(itemData);
-                        if (spell == null) {
-                            if (callback != null) {
-                                callback.updated(null);
-                            }
-                            return null;
-                        }
-                        itemStack = getLearnSpellBook(spell);
-                    }
-                    break;
-                    case "recipe": {
-                        itemStack = CompatibilityLib.getCompatibilityUtils().getKnowledgeBook();
-                        if (itemStack != null) {
-                            if (itemData.equals("*")) {
-                                Collection<String> keys = crafting.getRecipeKeys();
-                                for (String key : keys) {
-                                    CompatibilityLib.getCompatibilityUtils().addRecipeToBook(itemStack, plugin, key);
-                                }
-                            } else {
-                                String[] recipeKeys = StringUtils.split(itemData, ",");
-                                for (String recipe : recipeKeys) {
-                                    CompatibilityLib.getCompatibilityUtils().addRecipeToBook(itemStack, plugin, recipe);
-                                }
-                            }
-                        }
-                    }
-                    break;
-                    case "recipes": {
-                        itemStack = CompatibilityLib.getCompatibilityUtils().getKnowledgeBook();
-                        if (itemStack != null) {
-                            if (itemData.equals("*")) {
-                                Collection<String> keys = crafting.getRecipeKeys();
-                                for (String key : keys) {
-                                    CompatibilityLib.getCompatibilityUtils().addRecipeToBook(itemStack, plugin, key);
-                                }
-                            } else {
-                                String[] recipeKeys = StringUtils.split(itemData, ",");
-                                for (String recipe : recipeKeys) {
-                                    MageClassTemplate mageClass = getMageClassTemplate(recipe);
-                                    if (mageClass != null) {
-                                        for (String key : mageClass.getRecipies()) {
-                                            CompatibilityLib.getCompatibilityUtils().addRecipeToBook(itemStack, plugin, key);
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    break;
-                    case "spell": {
-                        // Fix delimiter replaced above, to handle spell levels
-                        String spellKey = itemData.replace(":", "|");
-                        itemStack = createSpellItem(spellKey, mage, brief);
-                    }
-                    break;
-                    case "wand": {
-                        com.elmakers.mine.bukkit.api.wand.Wand wand = createWand(itemData, mage);
-                        if (wand != null) {
-                            itemStack = wand.getItem();
-                        }
-                    }
-                    break;
-                    case "upgrade": {
-                        com.elmakers.mine.bukkit.api.wand.Wand wand = createWand(itemData, mage);
-                        if (wand != null) {
-                            wand.makeUpgrade();
-                            itemStack = wand.getItem();
-                        }
-                    }
-                    break;
-                    case "brush": {
-                        itemStack = createBrushItem(itemData);
-                    }
-                    break;
-                    case "item": {
-                        itemStack = createGenericItem(itemData);
-                    }
-                    break;
-                    default: {
-                        // Currency
-                        Currency currency = getCurrency(itemKey);
-                        com.elmakers.mine.bukkit.api.block.MaterialAndData currencyIcon = currency == null ? null : currency.getIcon();
-                        if (pieces.length > 1 && currencyIcon != null) {
-                            itemStack = currencyIcon.getItemStack(1);
-                            if (CompatibilityLib.getItemUtils().isEmpty(itemStack)) {
-                                getLogger().warning("Trying to get a currency item for '" + itemKey + "', which an invalid icon defined");
-                                return null;
-                            }
-                            ItemMeta meta = itemStack.getItemMeta();
-                            String name = currency.getName(messages);
-                            String itemName = messages.get("currency." + itemKey + ".item_name", messages.get("currency.default.item_name"));
-                            itemName = itemName.replace("$type", name);
-                            itemName = itemName.replace("$amount", itemData);
-                            meta.setDisplayName(itemName);
-                            int intAmount;
-                            try {
-                                intAmount = Integer.parseInt(itemData);
-                            } catch (Exception ex) {
-                                getLogger().warning("Invalid amount '" + itemData + "' in " + currency.getKey() + " cost: " + magicItemKey);
-                                if (callback != null) {
-                                    callback.updated(null);
-                                }
-                                return null;
-                            }
-
-                            String currencyDescription = messages.get("currency." + itemKey + ".description", messages.get("currency.default.description"));
-                            if (currencyDescription.length() > 0) {
-                                currencyDescription = currencyDescription.replace("$type", name);
-                                currencyDescription = currencyDescription.replace("$amount", itemData);
-                                List<String> lore = new ArrayList<>();
-                                CompatibilityLib.getInventoryUtils().wrapText(CompatibilityLib.getCompatibilityUtils().translateColors(currencyDescription), lore);
-                                meta.setLore(lore);
-                            }
-                            itemStack.setItemMeta(meta);
-                            itemStack = CompatibilityLib.getItemUtils().makeReal(itemStack);
-                            CompatibilityLib.getItemUtils().makeUnbreakable(itemStack);
-                            CompatibilityLib.getItemUtils().hideFlags(itemStack, CompatibilityConstants.ALL_HIDE_FLAGS);
-                            Object currencyNode = CompatibilityLib.getNBTUtils().createTag(itemStack, "currency");
-                            CompatibilityLib.getNBTUtils().setInt(currencyNode, "amount", intAmount);
-                            CompatibilityLib.getNBTUtils().setString(currencyNode, "type", itemKey);
-                        }
-                    }
-                }
-            } catch (Exception ex) {
-                getLogger().log(Level.WARNING, "Error creating item: " + magicItemKey, ex);
-            }
+            itemStack = createNamespacedItem(itemKey, itemData, mage, brief, callback, disabled);
         }
 
         // Final fallback, may be a plain item without any data, a
@@ -5718,6 +5555,176 @@ public class MagicController implements MageController, ChunkLoadListener {
         // Always call the callback if one was given.
         if (callback != null) {
             callback.updated(itemStack);
+        }
+        return itemStack;
+    }
+
+    @Nullable
+    private ItemStack createNamespacedItem(String itemKey, String itemData, Mage mage, boolean brief, ItemUpdatedCallback callback, boolean disabled) {
+        ItemStack itemStack = null;
+        try {
+            switch (itemKey) {
+                case "icon": {
+                    Icon icon = getIcon(itemData);
+                    if (icon != null) {
+                        com.elmakers.mine.bukkit.api.block.MaterialAndData material = disabled ? icon.getItemDisabledMaterial(this) : icon.getItemMaterial(this);
+                        if (material != null) {
+                            itemStack = material.getItemStack(1);
+                        }
+                    }
+                }
+                break;
+                case "egg": {
+                    itemStack = getSpawnEgg(itemData);
+                }
+                break;
+                case "book": {
+                    com.elmakers.mine.bukkit.api.spell.SpellCategory category = null;
+                    if (itemData.equals("categories")) {
+                        itemStack = getSpellCategoriesBook();
+                    } else {
+                        if (!itemData.isEmpty() && !itemData.equalsIgnoreCase("all")) {
+                            category = categories.get(itemData);
+                        }
+                        if (category != null) {
+                            itemStack = getSpellBook(category);
+                        } else {
+                            SpellTemplate spell = getSpellTemplate(itemData);
+                            if (spell != null) {
+                                itemStack = getSpellBook(spell);
+                            } else {
+                                itemStack = getSpellBook();
+                            }
+                        }
+                    }
+                }
+                break;
+                case "learnbook": {
+                    SpellTemplate spell = getSpellTemplate(itemData);
+                    if (spell == null) {
+                        if (callback != null) {
+                            callback.updated(null);
+                        }
+                        return null;
+                    }
+                    itemStack = getLearnSpellBook(spell);
+                }
+                break;
+                case "recipe": {
+                    itemStack = CompatibilityLib.getCompatibilityUtils().getKnowledgeBook();
+                    if (itemStack != null) {
+                        if (itemData.equals("*")) {
+                            Collection<String> keys = crafting.getRecipeKeys();
+                            for (String key : keys) {
+                                CompatibilityLib.getCompatibilityUtils().addRecipeToBook(itemStack, plugin, key);
+                            }
+                        } else {
+                            String[] recipeKeys = StringUtils.split(itemData, ",");
+                            for (String recipe : recipeKeys) {
+                                CompatibilityLib.getCompatibilityUtils().addRecipeToBook(itemStack, plugin, recipe);
+                            }
+                        }
+                    }
+                }
+                break;
+                case "recipes": {
+                    itemStack = CompatibilityLib.getCompatibilityUtils().getKnowledgeBook();
+                    if (itemStack != null) {
+                        if (itemData.equals("*")) {
+                            Collection<String> keys = crafting.getRecipeKeys();
+                            for (String key : keys) {
+                                CompatibilityLib.getCompatibilityUtils().addRecipeToBook(itemStack, plugin, key);
+                            }
+                        } else {
+                            String[] recipeKeys = StringUtils.split(itemData, ",");
+                            for (String recipe : recipeKeys) {
+                                MageClassTemplate mageClass = getMageClassTemplate(recipe);
+                                if (mageClass != null) {
+                                    for (String key : mageClass.getRecipies()) {
+                                        CompatibilityLib.getCompatibilityUtils().addRecipeToBook(itemStack, plugin, key);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                break;
+                case "spell": {
+                    // Fix delimiter replaced above, to handle spell levels
+                    String spellKey = itemData.replace(":", "|");
+                    itemStack = createSpellItem(spellKey, mage, brief);
+                }
+                break;
+                case "wand": {
+                    com.elmakers.mine.bukkit.api.wand.Wand wand = createWand(itemData, mage);
+                    if (wand != null) {
+                        itemStack = wand.getItem();
+                    }
+                }
+                break;
+                case "upgrade": {
+                    com.elmakers.mine.bukkit.api.wand.Wand wand = createWand(itemData, mage);
+                    if (wand != null) {
+                        wand.makeUpgrade();
+                        itemStack = wand.getItem();
+                    }
+                }
+                break;
+                case "brush": {
+                    itemStack = createBrushItem(itemData);
+                }
+                break;
+                case "item": {
+                    itemStack = createGenericItem(itemData);
+                }
+                break;
+                default: {
+                    // Currency
+                    Currency currency = getCurrency(itemKey);
+                    com.elmakers.mine.bukkit.api.block.MaterialAndData currencyIcon = currency == null ? null : currency.getIcon();
+                    if (currencyIcon != null) {
+                        itemStack = currencyIcon.getItemStack(1);
+                        if (CompatibilityLib.getItemUtils().isEmpty(itemStack)) {
+                            getLogger().warning("Trying to get a currency item for '" + itemKey + "', which an invalid icon defined");
+                            return null;
+                        }
+                        ItemMeta meta = itemStack.getItemMeta();
+                        String name = currency.getName(messages);
+                        String itemName = messages.get("currency." + itemKey + ".item_name", messages.get("currency.default.item_name"));
+                        itemName = itemName.replace("$type", name);
+                        itemName = itemName.replace("$amount", itemData);
+                        meta.setDisplayName(itemName);
+                        int intAmount;
+                        try {
+                            intAmount = Integer.parseInt(itemData);
+                        } catch (Exception ex) {
+                            getLogger().warning("Invalid amount '" + itemData + "' in " + currency.getKey() + " cost: " + itemKey + ":" + itemData);
+                            if (callback != null) {
+                                callback.updated(null);
+                            }
+                            return null;
+                        }
+
+                        String currencyDescription = messages.get("currency." + itemKey + ".description", messages.get("currency.default.description"));
+                        if (currencyDescription.length() > 0) {
+                            currencyDescription = currencyDescription.replace("$type", name);
+                            currencyDescription = currencyDescription.replace("$amount", itemData);
+                            List<String> lore = new ArrayList<>();
+                            CompatibilityLib.getInventoryUtils().wrapText(CompatibilityLib.getCompatibilityUtils().translateColors(currencyDescription), lore);
+                            meta.setLore(lore);
+                        }
+                        itemStack.setItemMeta(meta);
+                        itemStack = CompatibilityLib.getItemUtils().makeReal(itemStack);
+                        CompatibilityLib.getItemUtils().makeUnbreakable(itemStack);
+                        CompatibilityLib.getItemUtils().hideFlags(itemStack, CompatibilityConstants.ALL_HIDE_FLAGS);
+                        Object currencyNode = CompatibilityLib.getNBTUtils().createTag(itemStack, "currency");
+                        CompatibilityLib.getNBTUtils().setInt(currencyNode, "amount", intAmount);
+                        CompatibilityLib.getNBTUtils().setString(currencyNode, "type", itemKey);
+                    }
+                }
+            }
+        } catch (Exception ex) {
+            getLogger().log(Level.WARNING, "Error creating item: " + itemKey + ":" + itemData, ex);
         }
         return itemStack;
     }

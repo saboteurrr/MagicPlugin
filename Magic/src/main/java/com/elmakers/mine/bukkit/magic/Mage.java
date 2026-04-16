@@ -5297,6 +5297,55 @@ public class Mage implements CostReducer, com.elmakers.mine.bukkit.api.magic.Mag
         if (globalValue != null) {
             return globalValue;
         }
+        Double entityValue = getEntityStateAttribute(attributeKey, compatibilityUtils);
+        if (entityValue != null) {
+            return entityValue;
+        }
+        Double locationValue = getLocationAndWorldAttribute(attributeKey);
+        if (locationValue != null) {
+            return locationValue;
+        }
+        Double combatValue = getCombatStatAttribute(attributeKey);
+        if (combatValue != null) {
+            return combatValue;
+        }
+        // Fallback: enchantments and potion effects
+        Player player = getPlayer();
+        if (player != null) {
+            Enchantment enchantment = CompatibilityLib.getCompatibilityUtils().getEnchantmentByKey(attributeKey);
+            if (enchantment != null) {
+                // TODO: Be smarter about, for instance, holding enchanted armor?
+                ItemStack item = player.getInventory().getItemInMainHand();
+                double level = 0;
+                if (item != null && item.hasItemMeta()) {
+                    ItemMeta meta = item.getItemMeta();
+                    level = Math.max(level, meta.getEnchantLevel(enchantment));
+                }
+                for (ItemStack armor : player.getInventory().getArmorContents()) {
+                    if (armor != null && armor.hasItemMeta()) {
+                        ItemMeta meta = armor.getItemMeta();
+                        level = Math.max(level, meta.getEnchantLevel(enchantment));
+                    }
+                }
+                return level;
+            }
+        }
+        LivingEntity living = getLivingEntity();
+        if (living != null) {
+            PotionEffectType potionEffectType = PotionEffectType.getByName(attributeKey.toUpperCase());
+            if (potionEffectType != null) {
+                for (PotionEffect effect : living.getActivePotionEffects()) {
+                    if (effect.getType() == potionEffectType) {
+                        return (double)effect.getAmplifier() + 1;
+                    }
+                }
+                return 0.0;
+            }
+        }
+        return null;
+    }
+
+    private Double getEntityStateAttribute(String attributeKey, CompatibilityUtils compatibilityUtils) {
         switch (attributeKey) {
             case "custom_model_data": {
                 Player player = getPlayer();
@@ -5347,6 +5396,12 @@ public class Mage implements CostReducer, com.elmakers.mine.bukkit.api.magic.Mag
             case "mana_max": return (double)getEffectiveManaMax();
             case "xp": return (double)getExperience();
             case "level": return (double)getLevel();
+            default: return null;
+        }
+    }
+
+    private Double getLocationAndWorldAttribute(String attributeKey) {
+        switch (attributeKey) {
             case "time": {
                 Location location = getLocation();
                 return location == null ? null : (double)location.getWorld().getTime();
@@ -5395,6 +5450,12 @@ public class Mage implements CostReducer, com.elmakers.mine.bukkit.api.magic.Mag
                 Location location = getLocation();
                 return location == null ? null : (double)location.getWorld().getDifficulty().ordinal();
             }
+            default: return null;
+        }
+    }
+
+    private Double getCombatStatAttribute(String attributeKey) {
+        switch (attributeKey) {
             case "damage": {
                 return getLastDamage();
             }
@@ -5418,41 +5479,7 @@ public class Mage implements CostReducer, com.elmakers.mine.bukkit.api.magic.Mag
             case "velocity": {
                 return getVelocity().length();
             }
-
-            default:
-                Player player = getPlayer();
-                if (player != null) {
-                    Enchantment enchantment = CompatibilityLib.getCompatibilityUtils().getEnchantmentByKey(attributeKey);
-                    if (enchantment != null) {
-                        // TODO: Be smarter about, for instance, holding enchanted armor?
-                        ItemStack item = player.getInventory().getItemInMainHand();
-                        double level = 0;
-                        if (item != null && item.hasItemMeta()) {
-                            ItemMeta meta = item.getItemMeta();
-                            level = Math.max(level, meta.getEnchantLevel(enchantment));
-                        }
-                        for (ItemStack armor : player.getInventory().getArmorContents()) {
-                            if (armor != null && armor.hasItemMeta()) {
-                                ItemMeta meta = armor.getItemMeta();
-                                level = Math.max(level, meta.getEnchantLevel(enchantment));
-                            }
-                        }
-                        return level;
-                    }
-                }
-                LivingEntity living = getLivingEntity();
-                if (living != null) {
-                    PotionEffectType potionEffectType = PotionEffectType.getByName(attributeKey.toUpperCase());
-                    if (potionEffectType != null) {
-                        for (PotionEffect effect : living.getActivePotionEffects()) {
-                            if (effect.getType() == potionEffectType) {
-                                return (double)effect.getAmplifier() + 1;
-                            }
-                        }
-                        return 0.0;
-                    }
-                }
-                return null;
+            default: return null;
         }
     }
 
